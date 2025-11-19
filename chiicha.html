@@ -1,0 +1,1972 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hikmatov | Закрытая Система для Розницы</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & Babel -->
+    <script
+      crossorigin
+      src="https://unpkg.com/react@18/umd/react.development.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"
+    ></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- SheetJS for Excel Generation -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        // --- CANVAS MANDATORY FIREBASE CONFIGURATION ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // --- END CANVAS CONFIG ---
+        
+        // Import the functions you need from the SDKs you need
+        import { initializeApp, setLogLevel } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, where, addDoc, serverTimestamp, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
+        // Global variables for Firebase services
+        window.firebaseConfig = firebaseConfig;
+        window.db = null;
+        window.auth = null;
+        window.appId = appId; // Используем глобальный __app_id
+
+        if (Object.keys(window.firebaseConfig).length > 0) {
+            window.firebaseApp = initializeApp(window.firebaseConfig);
+            window.db = getFirestore(window.firebaseApp);
+            window.auth = getAuth(window.firebaseApp);
+            
+            // Включаем подробное логирование для отладки ошибок разрешений Firestore
+            setLogLevel('debug');
+
+            const signInUser = async () => {
+                const auth = window.auth;
+                if (initialAuthToken) {
+                    try {
+                        // 1. Попытка входа с предоставленным кастомным токеном
+                        await signInWithCustomToken(auth, initialAuthToken);
+                        // FIX: Изменено сообщение на общее
+                        console.log("Canvas user successfully signed in (Authenticated)."); 
+                        return;
+                    } catch (error) {
+                        // Если кастомный токен не сработал (например, истек), логируем предупреждение и продолжаем
+                        console.warn("Firebase Custom Token Sign-In Failed (Proceeding to anonymous sign-in):", error);
+                    }
+                }
+                
+                // 2. Обязательная анонимная аутентификация для обеспечения request.auth != null
+                try {
+                    await signInAnonymously(auth);
+                    console.log("Successfully signed in anonymously for Firestore access.");
+                } catch (e) {
+                    // Если даже анонимный вход не работает, скорее всего, проблема с конфигурацией/правилами.
+                    console.error("CRITICAL: Anonymous Sign-In Failed (App running as GUEST). Permissions error likely.", e);
+                }
+            };
+            signInUser();
+        } else {
+            console.warn("Firebase configuration is missing. Using local storage simulation.");
+        }
+        
+        // Expose Firebase functions globally for React to use
+        window.FirebaseServices = {
+            db: window.db,
+            auth: window.auth,
+            appId: window.appId,
+            getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
+            onAuthStateChanged, signOut, setDoc, doc, collection, query, where, 
+            onSnapshot, addDoc, updateDoc, serverTimestamp, orderBy, getDoc, deleteDoc
+        };
+    </script>
+
+
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap");
+
+      /* --- Base/Light Theme --- */
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: var(--bg-primary, #f8fafc); /* slate-50 */
+        color: var(--text-primary, #1e293b); /* slate-800 */
+        transition: background-color 0.3s, color 0.3s;
+      }
+      .glass-panel {
+        background: var(--bg-glass, rgba(255, 255, 255, 0.85));
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border-glass, rgba(226, 232, 240, 0.8));
+      }
+      .card-bg {
+        background-color: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-card, #f1f5f9);
+      }
+      .input-style {
+        background-color: var(--bg-input, #f8fafc);
+        border: 1px solid var(--border-input, #e2e8f0);
+        color: var(--text-primary);
+      }
+      .chat-message-customer {
+          background-color: var(--bg-chat-customer, #e2e8f0);
+          color: var(--text-primary);
+      }
+
+      /* --- Dark Theme --- */
+      body.dark {
+        --bg-primary: #0f172a; /* slate-900 */
+        --text-primary: #f8fafc; /* slate-50 */
+        --bg-glass: rgba(30, 41, 59, 0.85); /* slate-800/85 */
+        --border-glass: rgba(51, 65, 85, 0.8); /* slate-700/80 */
+        --bg-card: #1e293b; /* slate-800 */
+        --border-card: #334155; /* slate-700 */
+        --bg-input: #0f172a; /* slate-900 */
+        --border-input: #334155;
+        --bg-chat-customer: #334155; /* slate-700 */
+      }
+      .dark .glass-panel {
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+      }
+
+      /* --- Animations & Utilities --- */
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes scaleUp {
+        from { transform: scale(0.95); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+      }
+      @keyframes slideInRight {
+        from { transform: translateX(100%); }
+        to { transform: translateX(0); }
+      }
+
+      .animate-fade-in { animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+      .animate-scale-up { animation: scaleUp 0.3s ease-out forwards; }
+      .animate-slide-in { animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+      .hide-scrollbar::-webkit-scrollbar { display: none; }
+      .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      .input-style {
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+        font-size: 0.875rem;
+        width: 100%;
+        transition: all 0.2s;
+      }
+      .input-style:focus {
+        border-color: #3b82f6;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+      }
+      .chat-message-owner {
+          align-self: flex-end;
+          background-color: #3b82f6;
+          color: white;
+          border-radius: 12px 12px 2px 12px;
+      }
+      .input-style::placeholder {
+          color: var(--text-placeholder, #64748b);
+      }
+      .dark .input-style::placeholder {
+          --text-placeholder: #94a3b8;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-presets="typescript,react">
+      const { useState, useEffect, useMemo, useRef } = React;
+      
+      // --- AUTH CONSTANTS ---
+      const ADMIN_CREDENTIALS = {
+          login: 'Hikmatov',
+          pass: 'hikmat2856',
+          role: 'supplier'
+      };
+      const STAFF_CREDENTIALS = {
+          login: 'staff',
+          pass: '3250staff',
+          role: 'staff'
+      };
+
+      // --- UTILITIES ---
+      const formatPrice = (price) => {
+        return price ? Number(price).toLocaleString('ru-RU', { currency: 'KZT', style: 'currency', minimumFractionDigits: 0 }).replace('₸', '₸') : '0 ₸';
+      };
+      
+      // Role definitions
+      const ROLES = {
+        SUPPLIER: 'supplier',
+        STAFF: 'staff',
+        CUSTOMER: 'customer',
+        GUEST: 'guest',
+      }
+      
+      // --- THEME TOGGLE HOOK ---
+      const useTheme = () => {
+          const [isDark, setIsDark] = useState(false);
+
+          useEffect(() => {
+              const savedTheme = localStorage.getItem('hikmatov-theme');
+              const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+              
+              const initialDark = savedTheme === 'dark' || (savedTheme === null && prefersDark);
+              setIsDark(initialDark);
+              document.body.classList.toggle('dark', initialDark);
+          }, []);
+
+          const toggleTheme = () => {
+              setIsDark(prev => {
+                  const newTheme = !prev;
+                  localStorage.setItem('hikmatov-theme', newTheme ? 'dark' : 'light');
+                  document.body.classList.toggle('dark', newTheme);
+                  return newTheme;
+              });
+          };
+
+          return { isDark, toggleTheme };
+      };
+      
+      // --- ICONS (Lucide/Feather replacements) ---
+      const Icon = ({ children, size = 20, className = "" }) => (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={className}
+        >
+          {children}
+        </svg>
+      );
+      const Icons = {
+        Users: (p) => (<Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></Icon>),
+        Shield: (p) => (<Icon {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /><path d="m9 12 2 2 4-4" /></Icon>),
+        Plus: (p) => (<Icon {...p}><path d="M5 12h14" /><path d="M12 5v14" /></Icon>),
+        Minus: (p) => (<Icon {...p}><path d="M5 12h14" /></Icon>),
+        Trash: (p) => (<Icon {...p}><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></Icon>),
+        // FIX: Corrected polyline points to fix JSX rendering error
+        Truck: (p) => (<Icon {...p}><rect x="1" y="3" width="15" height="13" rx="2" ry="2" /><polyline points="16 8 20 8 23 11 23 16 16 16" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="18.5" r="2.5" /></Icon>),
+        Check: (p) => (<Icon {...p}><polyline points="20 6 9 17 4 12" /></Icon>),
+        X: (p) => (<Icon {...p}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Icon>),
+        ArrowLeft: (p) => (<Icon {...p}><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></Icon>),
+        Edit: (p) => (<Icon {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></Icon>),
+        Search: (p) => (<Icon {...p}><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></Icon>),
+        // FIX: Replaced </Box> with </Icon>
+        Box: (p) => (<Icon {...p}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></Icon>), 
+        CreditCard: (p) => (<Icon {...p}><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x="1" y="10" x2="23" y2="10"></line></Icon>),
+        Banknote: (p) => (<Icon {...p}><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle><path d="M6 12h.01M18 12h.01"></path></Icon>),
+        ShoppingCart: (p) => (<Icon {...p}><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 12.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></Icon>),
+        Calculator: (p) => (<Icon {...p}><rect x="4" y="2" width="16" height="20" rx="2" /><path d="M8 6h8" /><path d="M8 10h8" /><path d="M8 14h8" /><path d="M8 18h8" /></Icon>),
+        Message: (p) => (<Icon {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></Icon>),
+        Send: (p) => (<Icon {...p}><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></Icon>),
+        LogOut: (p) => (<Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></Icon>),
+        UserCheck: (p) => (<Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M19 10a2 2 0 0 0-2 2v1h-3" /></Icon>),
+        Sun: (p) => (<Icon {...p}><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></Icon>),
+        Moon: (p) => (<Icon {...p}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></Icon>),
+      };
+
+      // --- STATIC DATA ---
+      const INITIAL_PRODUCTS = [];
+
+      const STATUS_MAP = {
+        pending: { label: "Новый", color: "bg-blue-100 text-blue-700 dark:bg-blue-800 dark:text-blue-100" },
+        accepted: { label: "В работе", color: "bg-amber-100 text-amber-700 dark:bg-amber-800 dark:text-amber-100" },
+        delivered: { label: "Выполнен", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-800 dark:text-emerald-100" },
+        rejected: { label: "Отменен", color: "bg-red-100 text-red-700 dark:bg-red-800 dark:text-red-100" },
+      };
+
+      // --- FIREBASE / LS SIMULATION SETUP ---
+      const hasFirebase = !!window.FirebaseServices?.auth;
+
+      const useAuth = () => {
+          const [user, setUser] = useState(null); // Firebase User object
+          const [authRole, setAuthRole] = useState(ROLES.GUEST); // Role assigned by the app
+          const [isAuthReady, setIsAuthReady] = useState(false);
+          const [error, setError] = useState(null);
+          const [authLoadingStatus, setAuthLoadingStatus] = useState("Инициализация Firebase..."); // New state for loading message
+
+          useEffect(() => {
+              if (!hasFirebase) {
+                  const localUser = JSON.parse(localStorage.getItem('hikmatov_user'));
+                  if (localUser) {
+                      setUser(localUser);
+                      setAuthRole(localUser.role);
+                  }
+                  setAuthLoadingStatus("Локальный режим готов.");
+                  setIsAuthReady(true);
+                  return;
+              }
+              
+              const { auth: authInstance, onAuthStateChanged } = window.FirebaseServices;
+
+              const unsubscribe = onAuthStateChanged(authInstance, async (fbUser) => {
+                  setAuthLoadingStatus("Проверка статуса пользователя...");
+                  
+                  if (fbUser) {
+                      // FIX: Упрощаем логику получения роли, чтобы избежать ошибки прав доступа при чтении 'user_profiles'
+                      let userRole = ROLES.CUSTOMER; // По умолчанию - Покупатель
+                      
+                      try {
+                          const userDoc = await window.FirebaseServices.getDoc(
+                              window.FirebaseServices.doc(window.FirebaseServices.db, `artifacts/${window.FirebaseServices.appId}/user_profiles`, fbUser.uid)
+                          );
+                          userRole = userDoc.exists() ? userDoc.data().role : ROLES.CUSTOMER;
+                          setAuthLoadingStatus("Профиль пользователя загружен.");
+                      } catch (e) {
+                          // Эта ошибка, вероятно, вызвана недостаточными правами доступа.
+                          console.warn("WARN: Failed to fetch user profile (likely due to insufficient permissions/non-existent profile). Defaulting to Customer role.", e); 
+                          setAuthLoadingStatus("Ошибка загрузки профиля. Установлена роль 'Покупатель' (по умолчанию).");
+                      }
+                      
+                      setUser({ ...fbUser, role: userRole });
+                      setAuthRole(userRole);
+
+                  } else {
+                      setUser(null);
+                      setAuthRole(ROLES.GUEST);
+                      setAuthLoadingStatus("Гостевой режим активен.");
+                  }
+                  setIsAuthReady(true);
+              });
+
+              return () => unsubscribe();
+          }, []);
+
+          // Auth Actions for Customers
+          const customerLogin = async (email, password) => {
+              setError(null);
+              if (!hasFirebase) { setError("Firebase not initialized."); return; }
+              try {
+                  const { signInWithEmailAndPassword, auth: authInstance } = window.FirebaseServices;
+                  await signInWithEmailAndPassword(authInstance, email, password);
+              } catch (e) {
+                  console.error(e);
+                  setError("Ошибка входа: проверьте Email и пароль.");
+              }
+          };
+
+          const customerRegister = async (email, password, name) => {
+              setError(null);
+              if (!hasFirebase) { setError("Firebase not initialized."); return; }
+              try {
+                  const { createUserWithEmailAndPassword, auth: authInstance, setDoc, doc, db } = window.FirebaseServices;
+                  const userCredential = await createUserWithEmailAndPassword(authInstance, email, password);
+                  
+                  // Save profile data (including name and role)
+                  await setDoc(doc(db, `artifacts/${window.FirebaseServices.appId}/user_profiles`, userCredential.user.uid), {
+                      name: name,
+                      role: ROLES.CUSTOMER,
+                      email: email
+                  });
+              } catch (e) {
+                  console.error(e);
+                  setError("Ошибка регистрации: Email уже используется или пароль слишком слабый.");
+              }
+          };
+          
+          // Custom Admin/Staff Login (for mock access)
+          const adminStaffLogin = (login, password, targetRole) => {
+              const credentials = targetRole === ROLES.SUPPLIER ? ADMIN_CREDENTIALS : STAFF_CREDENTIALS;
+              
+              if (login === credentials.login && password === credentials.pass) {
+                  // Mock authentication for UI access
+                  const mockUser = { uid: credentials.login, role: targetRole, email: credentials.login };
+                  
+                  if (!hasFirebase) {
+                       // Local storage simulation
+                       localStorage.setItem('hikmatov_user', JSON.stringify(mockUser));
+                       window.location.reload(); 
+                       return true;
+                  } else {
+                      // In a real environment, this would involve custom token generation. 
+                      // For this app, we just simulate the role change in the UI.
+                      setUser(mockUser);
+                      setAuthRole(targetRole);
+                      return true;
+                  }
+              }
+              return false;
+          };
+          
+          const logout = async () => {
+              setError(null);
+              if (hasFirebase) {
+                  const { signOut, auth: authInstance } = window.FirebaseServices;
+                  await signOut(authInstance);
+              } else {
+                  setUser(null);
+                  setAuthRole(ROLES.GUEST);
+                  localStorage.removeItem('hikmatov_user');
+              }
+          };
+
+          return { user, authRole, isAuthReady, customerLogin, customerRegister, adminStaffLogin, logout, error, authLoadingStatus }; // Return status
+      };
+
+      const useData = (authRole, authUser, isAuthReady) => { // Accept isAuthReady dependency
+          const [products, setProducts] = useState(INITIAL_PRODUCTS);
+          const [orders, setOrders] = useState([]);
+          const [isDataLoaded, setIsDataLoaded] = useState(false);
+          const [nextProductId, setNextProductId] = useState(1);
+          const [nextOrderId, setNextOrderId] = useState(1);
+          const [dataLoadingStatus, setDataLoadingStatus] = useState("Ожидание аутентификации..."); // New state
+
+          const getProductPath = () => `artifacts/${window.FirebaseServices.appId}/public/data/products`;
+          const getOrderPath = () => `artifacts/${window.FirebaseServices.appId}/public/data/orders`;
+
+          useEffect(() => {
+              // Only proceed if Auth is Ready
+              if (!isAuthReady) {
+                  setDataLoadingStatus("Ожидание аутентификации...");
+                  return;
+              }
+
+              // Load from "DB" (localStorage/Firebase)
+              if (!hasFirebase) {
+                  setDataLoadingStatus("Загрузка данных из локального хранилища...");
+                  const savedProducts = JSON.parse(localStorage.getItem('hikmatov_products')) || [];
+                  const savedOrders = JSON.parse(localStorage.getItem('hikmatov_orders')) || [];
+                  const savedProductId = Number(localStorage.getItem('hikmatov_nextProductId')) || 1;
+                  const savedOrderId = Number(localStorage.getItem('hikmatov_nextOrderId')) || 1;
+
+                  setProducts(savedProducts);
+                  setOrders(savedOrders);
+                  setNextProductId(savedProductId);
+                  setNextOrderId(savedOrderId);
+                  setDataLoadingStatus("Локальные данные загружены.");
+                  setIsDataLoaded(true);
+                  return;
+              }
+              
+              setDataLoadingStatus("Подключение к Firestore...");
+              
+              // Firebase Logic
+              const { db, collection, onSnapshot, query, orderBy } = window.FirebaseServices;
+              
+              // 1. Products Listener
+              const productsQuery = query(collection(db, getProductPath()));
+              const unsubProducts = onSnapshot(productsQuery, (snapshot) => {
+                  setDataLoadingStatus("Загрузка каталога товаров...");
+                  const fetchedProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                  setProducts(fetchedProducts);
+                  if (fetchedProducts.length > 0) {
+                     setNextProductId(Math.max(...fetchedProducts.map(p => Number(p.id) || 0)) + 1);
+                  }
+              }, (error) => console.error("Firestore Products Error:", error));
+
+              // 2. Orders Listener
+              const ordersQuery = query(collection(db, getOrderPath()));
+              const unsubOrders = onSnapshot(ordersQuery, (snapshot) => {
+                  setDataLoadingStatus("Загрузка заказов...");
+                  const fetchedOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                  // Сортировка на клиенте по дате (timestamp)
+                  const sortedOrders = fetchedOrders.sort((a, b) => {
+                      const dateA = a.date?.seconds || 0;
+                      const dateB = b.date?.seconds || 0;
+                      return dateB - dateA;
+                  });
+
+                  setOrders(sortedOrders);
+                  setDataLoadingStatus("Все данные загружены.");
+                  setIsDataLoaded(true);
+                  if (fetchedOrders.length > 0) {
+                      const maxOrderId = fetchedOrders.reduce((max, order) => Math.max(max, Number(order.numericId) || 0), 0);
+                      setNextOrderId(maxOrderId + 1);
+                  }
+              }, (error) => console.error("Firestore Orders Error:", error));
+
+              return () => {
+                  unsubProducts();
+                  unsubOrders();
+              };
+
+          }, [isAuthReady, authRole, authUser]); // Added isAuthReady to trigger data load only after auth is done
+
+          // Save Data (only for LS simulation, Firebase handles real-time saving)
+          useEffect(() => {
+              if (!hasFirebase) {
+                  localStorage.setItem('hikmatov_products', JSON.stringify(products));
+                  localStorage.setItem('hikmatov_orders', JSON.stringify(orders));
+                  localStorage.setItem('hikmatov_nextProductId', nextProductId.toString());
+                  localStorage.setItem('hikmatov_nextOrderId', nextOrderId.toString());
+              }
+          }, [products, orders, nextProductId, nextOrderId]);
+
+
+          const createUpdateProduct = async (productData, isNew) => {
+              if (!hasFirebase) {
+                  // LS Logic remains the same, simplified here for context
+                  if (isNew) {
+                      setProducts(prev => [{...productData, id: nextProductId.toString()}, ...prev]);
+                      setNextProductId(prev => prev + 1);
+                  } else {
+                      setProducts(prev => prev.map(p => p.id === productData.id ? productData : p));
+                  }
+                  return;
+              }
+
+              const { setDoc, doc, db, serverTimestamp } = window.FirebaseServices;
+              const productRef = doc(db, getProductPath(), productData.id);
+              await setDoc(productRef, { ...productData, updated_at: serverTimestamp() }, { merge: true });
+          };
+
+          const deleteProduct = async (id) => {
+              if (!hasFirebase) {
+                  setProducts(prev => prev.filter(p => p.id !== id));
+                  return;
+              }
+              const { deleteDoc, doc, db } = window.FirebaseServices;
+              await window.FirebaseServices.deleteDoc(doc(db, getProductPath(), id));
+          };
+          
+          const createOrder = async (orderData) => {
+              if (!hasFirebase) {
+                  setOrders(prev => [orderData, ...prev]);
+                  setNextOrderId(prev => prev + 1);
+                  return;
+              }
+              
+              const { collection, db, serverTimestamp, setDoc, doc } = window.FirebaseServices;
+              
+              // 1. Create Order Document
+              const orderRef = doc(collection(db, getOrderPath()));
+              await setDoc(orderRef, {
+                  ...orderData,
+                  id: orderRef.id,
+                  numericId: nextOrderId,
+                  date: serverTimestamp(),
+              });
+              
+              // 2. Update Stock (requires separate loop for atomic updates if possible)
+              for (const item of orderData.items) {
+                  const productRef = doc(db, getProductPath(), item.id);
+                  const productDoc = await window.FirebaseServices.getDoc(productRef);
+                  if (productDoc.exists()) {
+                      const currentStock = productDoc.data().stock;
+                      await window.FirebaseServices.updateDoc(productRef, {
+                          stock: currentStock - item.quantity,
+                          updated_at: serverTimestamp()
+                      });
+                  }
+              }
+          };
+
+          const updateOrder = async (orderId, updates) => {
+              if (!hasFirebase) {
+                  setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
+                  return;
+              }
+              const { updateDoc, doc, db, serverTimestamp } = window.FirebaseServices;
+              const orderRef = doc(db, getOrderPath(), orderId);
+              await updateDoc(orderRef, { ...updates, updated_at: serverTimestamp() });
+          };
+          
+          const getChatPath = (orderId) => `artifacts/${window.FirebaseServices.appId}/public/data/orders/${orderId}/chat`;
+
+          const sendChatMessage = async (orderId, sender, text, senderId) => {
+              if (!hasFirebase) return;
+              const { addDoc, collection, db, serverTimestamp } = window.FirebaseServices;
+              await addDoc(collection(db, getChatPath(orderId)), {
+                  sender: sender,
+                  text: text,
+                  senderId: senderId,
+                  timestamp: serverTimestamp()
+              });
+          };
+
+          return { products, orders, isDataLoaded, nextProductId, nextOrderId, createUpdateProduct, deleteProduct, createOrder, updateOrder, sendChatMessage, getChatPath, dataLoadingStatus }; // Return data status
+      };
+      
+      const Modal = ({ isOpen, onClose, title, children, maxWidth = "max-w-md" }) => {
+        if (!isOpen) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+            <div className={`card-bg w-full ${maxWidth} rounded-3xl shadow-2xl overflow-hidden animate-scale-up relative max-h-[90vh] overflow-y-auto`}>
+              <button
+                onClick={onClose}
+                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition"
+              >
+                <Icons.X size={20} />
+              </button>
+              <div className="p-6 pt-8">
+                <h3 className="text-xl font-bold text-slate-800 dark:text-slate-50 mb-4">{title}</h3>
+                {children}
+              </div>
+            </div>
+          </div>
+        );
+      };
+      
+      const Notification = ({ message, type = 'success', onClose }) => {
+        const baseClasses = "fixed bottom-4 right-4 z-50 p-4 rounded-xl shadow-xl text-white font-medium flex items-center gap-2 animate-slide-in transition-all";
+        const typeClasses = {
+            success: 'bg-emerald-500',
+            error: 'bg-red-500',
+            info: 'bg-blue-500',
+        };
+
+        useEffect(() => {
+            const timer = setTimeout(onClose, 3000);
+            return () => clearTimeout(timer);
+        }, []);
+
+        return (
+            <div className={`${baseClasses} ${typeClasses[type]}`}>
+                {type === 'success' && <Icons.Check size={20} />}
+                {type === 'error' && <Icons.X size={20} />}
+                {type === 'info' && <Icons.Message size={20} />}
+                <span>{message}</span>
+            </div>
+        );
+      };
+
+      // --- CUSTOMER AUTH MODAL ---
+      const AuthModal = ({ isOpen, onClose, customerLogin, customerRegister, error, authRole, logout }) => {
+          const [isLogin, setIsLogin] = useState(true);
+          const [email, setEmail] = useState('');
+          const [password, setPassword] = useState('');
+          const [name, setName] = useState('');
+
+          const handleCustomerAuth = async () => {
+              if (isLogin) {
+                  await customerLogin(email, password);
+              } else {
+                  await customerRegister(email, password, name);
+              }
+          };
+
+          if (authRole !== ROLES.GUEST) {
+              return (
+                  <Modal isOpen={isOpen} onClose={onClose} title="Уже авторизован" maxWidth="max-w-xs">
+                      <p className="text-center mb-4">Вы вошли как **{authRole}**.</p>
+                      <button 
+                          onClick={logout} 
+                          className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition flex items-center justify-center gap-2"
+                      >
+                          <Icons.LogOut size={16} /> Выйти
+                      </button>
+                  </Modal>
+              );
+          }
+
+          return (
+              <Modal isOpen={isOpen} onClose={onClose} title={isLogin ? "Вход Покупателя" : "Регистрация Покупателя"} maxWidth="max-w-sm">
+                  <h4 className="text-lg font-bold text-slate-700 dark:text-slate-200 mb-4">
+                      {isLogin ? "Вход для Покупателей (Firebase)" : "Регистрация (Firebase)"}
+                  </h4>
+                  
+                  {error && <div className="p-3 bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-100 rounded-xl mb-3 text-sm">{error}</div>}
+
+                  {!isLogin && (
+                      <div className="mb-3">
+                          <input type="text" placeholder="Имя" className="input-style" value={name} onChange={(e) => setName(e.target.value)} />
+                      </div>
+                  )}
+                  <div className="mb-3">
+                      <input type="email" placeholder="Email (для Firebase)" className="input-style" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  </div>
+                  <div className="mb-3">
+                      <input type="password" placeholder="Пароль" className="input-style" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  </div>
+                  
+                  <button onClick={handleCustomerAuth} className="w-full bg-emerald-500 text-white py-3 rounded-xl font-bold hover:bg-emerald-600 transition">
+                      {isLogin ? "Войти" : "Зарегистрироваться"}
+                  </button>
+                  
+                  <button onClick={() => setIsLogin(!isLogin)} className="w-full text-sm text-blue-600 mt-3 p-2 hover:bg-blue-50 dark:hover:bg-slate-700 rounded-xl transition">
+                      {isLogin ? "Нет аккаунта? Регистрация" : "Уже есть аккаунт? Войти"}
+                  </button>
+              </Modal>
+          );
+      };
+
+      // --- ADMIN/STAFF AUTH MODAL (NEW) ---
+      const AdminStaffAuthModal = ({ isOpen, onClose, targetRole, adminStaffLogin, showNotification }) => {
+          const [login, setLogin] = useState('');
+          const [password, setPassword] = useState('');
+          
+          const roleText = targetRole === ROLES.SUPPLIER ? 'Поставщика (Admin)' : 'Staff (Сотрудник)';
+          const credentials = targetRole === ROLES.SUPPLIER ? ADMIN_CREDENTIALS : STAFF_CREDENTIALS;
+
+          const handleLogin = () => {
+              const success = adminStaffLogin(login, password, targetRole);
+              if (success) {
+                  showNotification(`Успешный вход как ${roleText}!`, 'success');
+                  onClose();
+              } else {
+                  showNotification("Неверный логин или пароль.", 'error');
+              }
+          };
+
+          return (
+              <Modal isOpen={isOpen} onClose={onClose} title={`Вход ${roleText}`} maxWidth="max-w-xs">
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                      Используйте *моковые* учетные данные для доступа к панели.
+                  </p>
+                  
+                  <div className="mb-3">
+                      <input type="text" placeholder={`Логин`} className="input-style" value={login} onChange={(e) => setLogin(e.target.value)} />
+                  </div>
+                  <div className="mb-4">
+                      <input type="password" placeholder={`Пароль`} className="input-style" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  </div>
+                  
+                  <button onClick={handleLogin} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition">
+                      Войти в панель
+                  </button>
+              </Modal>
+          );
+      };
+      
+      const ChatPanel = ({ orderId, authRole, authUser, customerName, sendChatMessage, getChatPath }) => {
+          const [messages, setMessages] = useState([]);
+          const [newMessage, setNewMessage] = useState('');
+          const chatEndRef = useRef(null);
+          
+          const senderName = authRole === ROLES.CUSTOMER ? customerName : (authRole === ROLES.SUPPLIER ? 'Поставщик' : 'Staff');
+          
+          useEffect(() => {
+              if (!hasFirebase || !orderId) return;
+              
+              const { collection, onSnapshot, query, orderBy, db } = window.FirebaseServices;
+              const chatQuery = query(collection(db, getChatPath(orderId)), orderBy('timestamp', 'asc'));
+              
+              const unsubscribe = onSnapshot(chatQuery, (snapshot) => {
+                  const fetchedMessages = snapshot.docs.map(doc => ({
+                      id: doc.id,
+                      ...doc.data(),
+                      timestamp: doc.data().timestamp ? new Date(doc.data().timestamp.seconds * 1000) : new Date()
+                  }));
+                  setMessages(fetchedMessages);
+              }, (error) => console.error("Firestore Chat Error:", error));
+              
+              return () => unsubscribe();
+          }, [orderId]);
+          
+          useEffect(() => {
+              chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          }, [messages]);
+
+          const handleSend = () => {
+              if (newMessage.trim() === '') return;
+              
+              const senderId = authRole === ROLES.CUSTOMER ? authUser.uid : authRole; // Use role as ID for fixed users
+              sendChatMessage(orderId, senderName, newMessage.trim(), senderId);
+              setNewMessage('');
+          };
+
+          return (
+              <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4 h-96 flex flex-col">
+                  <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2">
+                      <Icons.Message size={18} className="text-blue-500" /> Чат поддержки по заказу
+                  </h4>
+                  <div className="flex-1 overflow-y-auto p-3 bg-slate-100 dark:bg-slate-700 rounded-xl space-y-3 hide-scrollbar">
+                      {messages.length === 0 ? (
+                          <p className="text-sm text-slate-400 text-center pt-10">Начните чат со специалистом...</p>
+                      ) : (
+                          messages.map((msg, index) => (
+                              <div 
+                                  key={index}
+                                  className={`flex ${msg.senderId === (authRole === ROLES.CUSTOMER ? authUser?.uid : authRole) ? 'justify-end' : 'justify-start'}`}
+                              >
+                                  <div className={`max-w-xs md:max-w-md p-3 text-sm shadow-md ${msg.senderId === (authRole === ROLES.CUSTOMER ? authUser?.uid : authRole) ? 'chat-message-owner' : 'chat-message-customer'}`}>
+                                      <p className="font-bold text-xs mb-1 opacity-80">{msg.sender}</p>
+                                      <p>{msg.text}</p>
+                                      <span className="text-[10px] opacity-70 block text-right mt-1">
+                                          {msg.timestamp.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                      <div ref={chatEndRef} />
+                  </div>
+                  <div className="flex pt-3 gap-2">
+                      <input 
+                          type="text" 
+                          placeholder="Ваше сообщение..." 
+                          className="input-style flex-1"
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                          disabled={!authUser?.uid && authRole === ROLES.CUSTOMER}
+                      />
+                      <button 
+                          onClick={handleSend}
+                          className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
+                          disabled={!authUser?.uid && authRole === ROLES.CUSTOMER}
+                      >
+                          <Icons.Send size={20} />
+                      </button>
+                  </div>
+              </div>
+          );
+      };
+
+
+      // --- APP COMPONENT ---
+      function HikmatovApp() {
+        // --- HOOKS ---
+        const { isDark, toggleTheme } = useTheme();
+        const { user, authRole, isAuthReady, customerLogin, customerRegister, adminStaffLogin, logout, error: authError, authLoadingStatus } = useAuth(); // Get auth status
+        const { products, orders, isDataLoaded, nextProductId, nextOrderId, createUpdateProduct, deleteProduct, createOrder, updateOrder, sendChatMessage, getChatPath, dataLoadingStatus } = useData(authRole, user, isAuthReady); // Get data status
+        
+        // --- STATE ---
+        const [view, setView] = useState("role_select");
+        
+        // Supplier/Staff State
+        const [adminTab, setAdminTab] = useState("products");
+        const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+        const [editingProduct, setEditingProduct] = useState(null);
+        const [productForm, setProductForm] = useState({});
+        const [processingOrder, setProcessingOrder] = useState(null);
+        const [adminOrderForm, setAdminOrderForm] = useState({ comment: "" });
+        const [adminOrderSearch, setAdminOrderSearch] = useState("");
+        const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false); // NEW
+        const [targetAdminRole, setTargetAdminRole] = useState(null); // NEW
+        
+        // Customer State
+        const [cart, setCart] = useState([]); // { ...product, quantity, resalePrice? }
+        const [customerTab, setCustomerTab] = useState("catalog");
+        const [selectedCategory, setSelectedCategory] = useState("Все");
+        const [customerSearch, setCustomerSearch] = useState("");
+        const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+        const [customerForm, setCustomerForm] = useState({ name: user?.displayName || '', phone: "", address: "", comment: "" });
+        const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+        const [notificationMessage, setNotificationMessage] = useState('');
+        const [isCustomerAuthModalOpen, setIsCustomerAuthModalOpen] = useState(false); // Renamed
+
+        // --- GENERAL HELPERS ---
+        const showNotification = (message, type = 'success') => {
+            setNotificationMessage(message);
+            setIsNotificationOpen(true);
+            setTimeout(() => setIsNotificationOpen(false), 3000);
+        };
+
+        // --- EFFECTS ---
+        useEffect(() => {
+             // Redirect view based on AuthRole once ready
+             if (isAuthReady) {
+                 if (authRole === ROLES.SUPPLIER) setView(ROLES.SUPPLIER);
+                 else if (authRole === ROLES.STAFF) setView(ROLES.SUPPLIER); // Staff uses the same admin panel view
+                 else if (authRole === ROLES.CUSTOMER) setView(ROLES.CUSTOMER);
+                 else setView("role_select");
+             }
+        }, [isAuthReady, authRole]);
+
+        useEffect(() => {
+            if (user?.uid && authRole === ROLES.CUSTOMER) {
+                // Fetch customer name/data if available on login
+                if (user.email) {
+                    setCustomerForm(prev => ({ ...prev, name: user.email })); // Using email as placeholder name
+                    if (hasFirebase) {
+                        const { getDoc, doc, db } = window.FirebaseServices;
+                        const userRef = doc(db, `artifacts/${window.FirebaseServices.appId}/user_profiles`, user.uid);
+                        getDoc(userRef).then(docSnap => {
+                            if (docSnap.exists() && docSnap.data().name) {
+                                setCustomerForm(prev => ({ ...prev, name: docSnap.data().name }));
+                            }
+                        }).catch(e => console.error("Could not fetch customer profile:", e));
+                    }
+                }
+            } else if (authRole === ROLES.GUEST) {
+                setCustomerForm({ name: "", phone: "", address: "", comment: "" });
+            }
+        }, [user, authRole]);
+
+
+        const categories = useMemo(() => [
+            "Все",
+            ...Array.from(new Set(products.map((p) => p.category))),
+        ], [products]);
+        
+        // --- PRODUCT MANAGEMENT LOGIC (Supplier) ---
+        const openProductModal = (product = null) => {
+          setEditingProduct(product);
+          if (product) {
+            setProductForm({ ...product });
+          } else {
+            setProductForm({
+              id: nextProductId.toString(),
+              name: "", description: "", category: categories[1] || "", 
+              sellPrice: "", costPrice: "", stock: 0, 
+              imageUrl: "https://placehold.co/150x150/e2e8f0/000000?text=Image",
+            });
+          }
+          setIsProductModalOpen(true);
+        };
+
+        const saveProduct = async () => {
+          if (!productForm.name || !productForm.sellPrice || !productForm.costPrice || !productForm.stock) {
+            showNotification("Заполните все обязательные поля!", 'error');
+            return;
+          }
+          const productToSave = { 
+              ...productForm, 
+              sellPrice: Number(productForm.sellPrice), 
+              costPrice: Number(productForm.costPrice), 
+              stock: Number(productForm.stock), 
+              isHidden: false 
+          };
+          
+          const isNew = !editingProduct;
+          if (isNew) {
+            productToSave.id = nextProductId.toString();
+          }
+
+          await createUpdateProduct(productToSave, isNew);
+
+          showNotification(isNew ? "Товар добавлен." : "Товар обновлен.");
+          if (isNew) setNextProductId(prev => prev + 1);
+          setIsProductModalOpen(false);
+          setEditingProduct(null);
+        };
+
+        const handleDeleteProduct = async (id) => {
+            if (window.confirm("Вы уверены, что хотите удалить этот товар?")) {
+                await deleteProduct(id);
+                showNotification("Товар удален.", 'info');
+            }
+        };
+
+        // --- ORDER MANAGEMENT LOGIC (Supplier/Staff) ---
+        const openProcessOrder = (order) => {
+          setProcessingOrder(order);
+          setAdminOrderForm({
+            ...order.customer,
+            comment: order.ownerResponse?.comment || "",
+          });
+        };
+
+        const saveOrderResolution = async (status) => {
+          const updates = {
+              status: status,
+              ownerResponse: {
+                  comment: adminOrderForm.comment,
+                  contactName: adminOrderForm.name,
+                  contactPhone: adminOrderForm.phone,
+                  contactAddress: adminOrderForm.address,
+                  processedBy: authRole, // Track who processed it
+              },
+          };
+          
+          await updateOrder(processingOrder.id, updates);
+          
+          setProcessingOrder(null);
+          showNotification(`Заказ #${processingOrder.numericId.toString().slice(-4)} обновлен.`);
+        };
+        
+        // --- CART & MARGIN LOGIC (Customer) ---
+        const addToCart = (product) => {
+          if (authRole === ROLES.GUEST) {
+              showNotification("Для покупок необходимо войти в систему!", 'error');
+              setIsCustomerAuthModalOpen(true);
+              return;
+          }
+
+          const inCartItem = cart.find((item) => item.id === product.id);
+          const currentQtyInCart = inCartItem ? inCartItem.quantity : 0;
+
+          if (currentQtyInCart >= product.stock) {
+            showNotification("Больше нет на складе!", 'error');
+            return;
+          }
+
+          setCart((prev) => {
+            const existing = prev.find((item) => item.id === product.id);
+            return existing
+              ? prev.map((item) =>
+                  item.id === product.id
+                    ? { ...item, quantity: item.quantity + 1 }
+                    : item
+                )
+              : [...prev, { ...product, quantity: 1, resalePrice: product.sellPrice * 1.5 }]; // Default resale price 150%
+          });
+          showNotification(`"${product.name}" добавлен в корзину.`);
+        };
+
+        const updateCartItem = (id, key, value) => {
+            setCart(prev => prev.map(item => {
+                if (item.id === id) {
+                    if (key === 'quantity') {
+                        const product = products.find(p => p.id === id);
+                        value = Math.max(1, Math.min(product.stock, value));
+                    }
+                    if (key === 'resalePrice') {
+                        value = Math.max(item.sellPrice + 10, value); // Resale must be higher than sellPrice
+                    }
+                    return { ...item, [key]: Number(value) };
+                }
+                return item;
+            }));
+        };
+
+        const removeFromCart = (id) => {
+            setCart(prev => prev.filter(item => item.id !== id));
+            showNotification("Товар удален из корзины.", 'info');
+        };
+
+        const cartTotals = useMemo(() => {
+            const customerTotal = cart.reduce((sum, i) => sum + i.sellPrice * i.quantity, 0);
+            const resellerMarginTotal = cart.reduce((sum, i) => sum + (i.resalePrice ? (i.resalePrice - i.sellPrice) * i.quantity : 0), 0);
+            return { customerTotal, resellerMarginTotal };
+        }, [cart]);
+
+        // --- CHECKOUT LOGIC (Customer) ---
+        const confirmOrder = async () => {
+          if (authRole !== ROLES.CUSTOMER || !user?.uid) { showNotification("Пожалуйста, войдите как Покупатель.", 'error'); return; }
+          if (!cart.length) { showNotification("Корзина пуста!", 'error'); return; }
+          if (!customerForm.name || !customerForm.phone) { showNotification("Заполните имя и телефон!", 'error'); return; }
+
+          // 1. Create Order
+          const orderItems = cart.map(i => ({
+              id: i.id,
+              name: i.name,
+              sellPrice: i.sellPrice,
+              quantity: i.quantity,
+              resalePrice: i.resalePrice,
+              // Include costPrice for future Owner margin analysis, but keep it in items
+              costPrice: products.find(p => p.id === i.id)?.costPrice || 0, 
+          }));
+          
+          const newOrderData = {
+              customerId: user.uid,
+              customerName: customerForm.name,
+              numericId: nextOrderId,
+              items: orderItems,
+              totalAmount: cartTotals.customerTotal,
+              status: "pending",
+              customer: { ...customerForm },
+              ownerResponse: { comment: "", contactName: ROLES.SUPPLIER, contactPhone: "", contactAddress: "" },
+          };
+
+          await createOrder(newOrderData);
+          
+          setCart([]);
+          setCustomerForm(prev => ({ ...prev, phone: "", address: "", comment: "" }));
+          setIsOrderModalOpen(false);
+          setCustomerTab("orders");
+          showNotification("Заказ успешно оформлен!");
+        };
+
+        // --- FINANCIAL STATS (Supplier) ---
+        const financialStats = useMemo(() => {
+          const deliveredOrders = orders.filter((o) => o.status === "delivered");
+
+          const revenue = deliveredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+          const totalMargin = deliveredOrders.reduce((sum, o) => {
+            return sum + o.items.reduce((c, i) => c + (i.sellPrice - i.costPrice) * i.quantity, 0);
+          }, 0);
+          
+          const totalSales = deliveredOrders.reduce((sum, o) => sum + o.items.reduce((c, i) => c + i.quantity, 0), 0);
+          const totalOrdersCount = orders.length;
+
+          return {
+            totalOrdersCount,
+            totalSales,
+            revenue,
+            totalMargin,
+            netProfit: totalMargin,
+          };
+        }, [orders, products]);
+
+        // --- EXPORT LOGIC ---
+        const handleSupplierExport = () => {
+            const ws_data = [
+                ["ID", "Название", "Категория", "Цена Продажная", "Себестоимость", "Маржинальность (ед.)", "Остаток", "Кол-во Продаж", "Общая Прибыль"],
+            ];
+            
+            products.forEach(p => {
+                const totalSold = orders.flatMap(o => o.items).filter(i => i.id === p.id).reduce((sum, i) => sum + i.quantity, 0);
+                const itemMargin = p.sellPrice - p.costPrice;
+                const totalItemProfit = itemMargin * totalSold;
+                
+                ws_data.push([
+                    p.id,
+                    p.name,
+                    p.category,
+                    p.sellPrice,
+                    p.costPrice,
+                    itemMargin,
+                    p.stock,
+                    totalSold,
+                    totalItemProfit
+                ]);
+            });
+
+            const ws_orders_data = [
+                ["ID Заказа", "Дата", "Покупатель", "Телефон", "Адрес", "Статус", "Товары", "Сумма Продажи", "Общая Маржа (Поставщика)", "Обработал"],
+            ];
+            
+            orders.forEach(o => {
+                const orderSupplierMargin = o.items.reduce((sum, i) => sum + (i.sellPrice - i.costPrice) * i.quantity, 0);
+                const productList = o.items.map(i => `${i.name} x${i.quantity}`).join('; ');
+                const dateLabel = o.date?.toDate ? o.date.toDate().toISOString().split('T')[0] : 'N/A'; // Handle Firebase Timestamp
+
+                ws_orders_data.push([
+                    o.numericId ? o.numericId.toString().slice(-4) : o.id.slice(-4),
+                    dateLabel,
+                    o.customer.name,
+                    o.customer.phone,
+                    o.customer.address,
+                    STATUS_MAP[o.status].label,
+                    productList,
+                    o.totalAmount,
+                    orderSupplierMargin,
+                    o.ownerResponse?.processedBy || 'N/A'
+                ]);
+            });
+
+            const wb = XLSX.utils.book_new();
+            const ws_products = XLSX.utils.aoa_to_sheet(ws_data);
+            const ws_orders = XLSX.utils.aoa_to_sheet(ws_orders_data);
+            
+            XLSX.utils.book_append_sheet(wb, ws_products, "Товары_Анализ");
+            XLSX.utils.book_append_sheet(wb, ws_orders, "Заказы");
+
+            XLSX.writeFile(wb, "Hikmatov_Отчет_Поставщика.xlsx");
+            showNotification("Данные успешно экспортированы в Excel!");
+        };
+
+        const handleBuyerMarginExport = () => {
+            if (cart.length === 0) {
+                showNotification("Корзина пуста для расчета маржи.", 'error');
+                return;
+            }
+            const ws_data = [
+                ["Товар", "Цена Поставщика (Продажная)", "Цена Для Перепродажи (Ваша)", "Количество", "Маржа За Единицу", "Маржа Итоговая"],
+            ];
+            
+            let totalResellerMargin = 0;
+
+            cart.forEach(item => {
+                const unitMargin = item.resalePrice - item.sellPrice;
+                const totalItemMargin = unitMargin * item.quantity;
+                totalResellerMargin += totalItemMargin;
+
+                ws_data.push([
+                    item.name,
+                    item.sellPrice,
+                    item.resalePrice,
+                    item.quantity,
+                    unitMargin,
+                    totalItemMargin
+                ]);
+            });
+
+            ws_data.push([]);
+            ws_data.push(["", "", "", "", "Общая Маржа (Прибыль)", totalResellerMargin]);
+
+
+            const wb = XLSX.utils.book_new();
+            const ws_margin = XLSX.utils.aoa_to_sheet(ws_data);
+            
+            XLSX.utils.book_append_sheet(wb, ws_margin, "Расчет_Маржи_Покупателя");
+            XLSX.writeFile(wb, "Hikmatov_Расчет_Маржи.xlsx");
+            showNotification("Расчет маржи успешно экспортирован в Excel!");
+        };
+
+
+        // --- VIEW RENDERING ---
+        
+        // Determine the overall loading message
+        let loadingMessage = authLoadingStatus;
+        if (isAuthReady && !isDataLoaded) {
+            loadingMessage = dataLoadingStatus;
+        } else if (!isAuthReady && isDataLoaded) {
+             // Should not happen, but for safety
+             loadingMessage = "Завершение аутентификации...";
+        }
+
+        if (!isAuthReady || !isDataLoaded) {
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
+                    <div className="text-center card-bg p-8 rounded-xl shadow-lg w-full max-w-sm">
+                        <h1 className="text-2xl font-bold text-blue-600 mb-4">
+                            Запуск Системы...
+                        </h1>
+                        <div className="w-12 h-12 border-4 border-blue-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+                        <p className="text-slate-700 dark:text-slate-200 font-medium">
+                            {loadingMessage}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-3">
+                            Пожалуйста, подождите. Скорость зависит от подключения к Firestore.
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Theme Toggle Button Component
+        const ThemeToggle = () => (
+            <button
+                onClick={toggleTheme}
+                className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                title={isDark ? "Светлая тема" : "Темная тема"}
+            >
+                {isDark ? <Icons.Sun size={20} className="text-amber-400" /> : <Icons.Moon size={20} className="text-slate-600" />}
+            </button>
+        );
+
+        // 1. Role Select
+        if (view === "role_select") {
+          
+            const openAdminLoginModal = (role) => {
+                setTargetAdminRole(role);
+                setIsAdminAuthModalOpen(true);
+            };
+
+          return (
+            <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-100 via-purple-50 to-blue-100 dark:from-slate-900 dark:via-slate-800 dark:to-gray-900">
+              <div className="absolute top-4 right-4">
+                  <ThemeToggle />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-6xl animate-fade-in">
+                
+                <div
+                  onClick={() => openAdminLoginModal(ROLES.SUPPLIER)}
+                  className="group card-bg backdrop-blur-xl p-10 rounded-[2rem] shadow-xl cursor-pointer hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 border border-blue-600/50"
+                >
+                  <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-blue-200 group-hover:scale-110 transition-transform duration-500">
+                    <Icons.Shield size={40} className="text-white" />
+                  </div>
+                  <h2 className="text-3xl font-bold mb-2">
+                    Поставщик (Admin)
+                  </h2>
+                  <p className="text-slate-500">
+                    Управление товарами, заказами и аналитика.
+                  </p> 
+                </div>
+                
+                <div
+                  onClick={() => openAdminLoginModal(ROLES.STAFF)}
+                  className="group card-bg backdrop-blur-xl p-10 rounded-[2rem] shadow-xl cursor-pointer hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 border border-amber-500/50"
+                >
+                  <div className="w-20 h-20 bg-amber-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-amber-200 group-hover:scale-110 transition-transform duration-500">
+                    <Icons.UserCheck size={40} className="text-white" />
+                  </div>
+                  <h2 className="text-3xl font-bold mb-2">
+                    Staff (Сотрудник)
+                  </h2>
+                  <p className="text-slate-500">
+                    Обработка заказов и чат с покупателями.
+                  </p>
+                </div>
+                
+                <div
+                  onClick={() => setView(ROLES.CUSTOMER)}
+                  className="group card-bg backdrop-blur-xl p-10 rounded-[2rem] shadow-xl cursor-pointer hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 border border-emerald-500/50"
+                >
+                  <div className="w-20 h-20 bg-emerald-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-emerald-200 group-hover:scale-110 transition-transform duration-500">
+                    <Icons.ShoppingCart size={40} className="text-white" />
+                  </div>
+                  <h2 className="text-3xl font-bold mb-2">
+                    Покупатель (Buyer)
+                  </h2>
+                  <p className="text-slate-500">
+                    Каталог, корзина и расчет маржи.
+                  </p>
+                  <button onClick={(e) => {e.stopPropagation(); setIsCustomerAuthModalOpen(true);}} className="text-xs text-emerald-500 mt-2 p-1 border border-emerald-500 rounded-full inline-block hover:bg-emerald-50 dark:hover:bg-emerald-900/50">
+                    Войти / Регистрация (Firebase)
+                  </button>
+                </div>
+
+              </div>
+              <AuthModal 
+                  isOpen={isCustomerAuthModalOpen} 
+                  onClose={() => setIsCustomerAuthModalOpen(false)} 
+                  customerLogin={customerLogin} 
+                  customerRegister={customerRegister} 
+                  logout={logout}
+                  error={authError}
+                  authRole={authRole}
+              />
+              <AdminStaffAuthModal
+                  isOpen={isAdminAuthModalOpen}
+                  onClose={() => setIsAdminAuthModalOpen(false)}
+                  targetRole={targetAdminRole}
+                  adminStaffLogin={adminStaffLogin}
+                  showNotification={showNotification}
+              />
+              {isNotificationOpen && <Notification message={notificationMessage} onClose={() => setIsNotificationOpen(false)} />}
+            </div>
+          );
+        }
+
+        // 2. Supplier/Staff Panel (Simplified to one view, with role-based features)
+        if (view === ROLES.SUPPLIER || view === ROLES.STAFF) {
+          
+          if (authRole === ROLES.GUEST) {
+               // Redirect guests to the login modal if they try to access the panel directly
+               return (
+                  <div className="min-h-screen flex items-center justify-center p-4">
+                      <div className="text-center card-bg p-10 rounded-3xl shadow-xl">
+                          <h2 className="text-2xl font-bold mb-4">Авторизация</h2>
+                          <p className="mb-6">Для доступа к панели **{view === ROLES.SUPPLIER ? 'Поставщика' : 'Staff'}** необходим логин/пароль.</p>
+                          <button onClick={() => { setTargetAdminRole(view); setIsAdminAuthModalOpen(true); }} className="bg-slate-800 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-700 transition">
+                              Войти
+                          </button>
+                          <button onClick={() => setView("role_select")} className="block mt-4 text-blue-600 hover:text-blue-800">
+                              Вернуться к выбору ролей
+                          </button>
+                      </div>
+                      <AdminStaffAuthModal
+                          isOpen={isAdminAuthModalOpen}
+                          onClose={() => setIsAdminAuthModalOpen(false)}
+                          targetRole={targetAdminRole}
+                          adminStaffLogin={adminStaffLogin}
+                          showNotification={showNotification}
+                      />
+                      {isNotificationOpen && <Notification message={notificationMessage} onClose={() => setIsNotificationOpen(false)} />}
+                  </div>
+              );
+          }
+
+          const filteredOrders = orders.filter(
+            (o) =>
+              o.customerName?.toLowerCase().includes(adminOrderSearch.toLowerCase()) ||
+              o.numericId?.toString().includes(adminOrderSearch) ||
+              o.id.toString().includes(adminOrderSearch)
+          );
+          
+          const isSupplier = authRole === ROLES.SUPPLIER;
+          const panelTitle = isSupplier ? "Панель Поставщика (Admin)" : "Панель Staff (Сотрудник)";
+
+          return (
+            <div className="min-h-screen pb-20 animate-fade-in">
+              <header className="sticky top-0 z-30 glass-panel px-6 py-4 shadow-sm flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {logout(); setView("role_select");}}
+                    className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition"
+                    title="Выйти"
+                  >
+                    <Icons.LogOut />
+                  </button>
+                  <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-indigo-500">
+                    {panelTitle}
+                  </h1>
+                </div>
+                <ThemeToggle />
+              </header>
+
+              <main className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
+                {/* Tabs */}
+                <div className="flex card-bg p-1 rounded-2xl shadow-md border border-slate-100 dark:border-slate-700">
+                    {isSupplier && (
+                        <button
+                            onClick={() => setAdminTab("products")}
+                            className={`flex-1 py-2 text-sm font-bold rounded-xl transition flex items-center justify-center gap-2 ${
+                                adminTab === "products" ? "bg-blue-600 text-white shadow-lg dark:bg-blue-700" : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
+                            }`}
+                        >
+                            <Icons.Box size={18} /> Товары / Склад
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setAdminTab("orders")}
+                        className={`flex-1 py-2 text-sm font-bold rounded-xl transition flex items-center justify-center gap-2 ${
+                            adminTab === "orders" ? "bg-amber-600 text-white shadow-lg dark:bg-amber-700" : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
+                            }`}
+                        >
+                        <Icons.Truck size={18} /> Заказы
+                    </button>
+                    {isSupplier && (
+                        <button
+                            onClick={() => setAdminTab("analytics")}
+                            className={`flex-1 py-2 text-sm font-bold rounded-xl transition flex items-center justify-center gap-2 ${
+                                adminTab === "analytics" ? "bg-emerald-600 text-white shadow-lg dark:bg-emerald-700" : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
+                            }`}
+                        >
+                            <Icons.Calculator size={18} /> Аналитика
+                        </button>
+                    )}
+                </div>
+
+                {/* Content */}
+                {/* Products Tab (Supplier Only) */}
+                {adminTab === "products" && isSupplier && (
+                    <div className="card-bg rounded-3xl p-6 shadow-md">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-bold">Управление Товарами</h2>
+                            <button
+                                onClick={() => openProductModal(null)}
+                                className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-700 transition flex items-center gap-2 shadow-lg shadow-blue-200 dark:shadow-blue-900/50"
+                            >
+                                <Icons.Plus size={16} /> Добавить товар
+                            </button>
+                        </div>
+                        
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left text-slate-500 dark:text-slate-400">
+                                <thead className="text-xs uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-300 rounded-xl">
+                                    <tr>
+                                        <th scope="col" className="p-3 rounded-tl-xl">Название / SKU</th>
+                                        <th scope="col" className="p-3">Цена Продажи</th>
+                                        <th scope="col" className="p-3 text-red-500">Себестоимость</th>
+                                        <th scope="col" className="p-3 text-emerald-500">Маржа (ед.)</th>
+                                        <th scope="col" className="p-3">Остаток</th>
+                                        <th scope="col" className="p-3 rounded-tr-xl">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {products.map((p) => (
+                                        <tr key={p.id} className="border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                            <th scope="row" className="px-3 py-4 font-medium text-slate-900 dark:text-slate-50 whitespace-nowrap flex items-center gap-3">
+                                                <img src={p.imageUrl} className="w-8 h-8 rounded object-cover" onError={(e) => e.target.src = 'https://placehold.co/150x150/e2e8f0/000000?text=Image'} />
+                                                <div>
+                                                    <p className="font-bold">{p.name}</p>
+                                                    <p className="text-xs text-slate-400">ID: {p.id}</p>
+                                                </div>
+                                            </th>
+                                            <td className="px-3 py-4 font-semibold text-blue-500">{formatPrice(p.sellPrice)}</td>
+                                            <td className="px-3 py-4 text-red-500 font-semibold">{formatPrice(p.costPrice)}</td>
+                                            <td className="px-3 py-4 text-emerald-500 font-bold">{formatPrice(p.sellPrice - p.costPrice)}</td>
+                                            <td className="px-3 py-4 font-semibold" style={{ color: p.stock < 5 ? '#ef4444' : '' }}>{p.stock} шт.</td>
+                                            <td className="px-3 py-4">
+                                                <button onClick={() => openProductModal(p)} className="p-2 text-slate-500 hover:text-blue-600 transition" title="Редактировать"><Icons.Edit size={18} /></button>
+                                                <button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-slate-500 hover:text-red-600 transition" title="Удалить"><Icons.Trash size={18} /></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Orders Tab (Supplier & Staff) */}
+                {adminTab === "orders" && (
+                    <div className="card-bg rounded-3xl p-6 shadow-md">
+                        <h2 className="text-2xl font-bold">Заказы</h2>
+                        <div className="relative my-6">
+                            <Icons.Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder="Поиск по имени клиента или ID заказа..."
+                                className="input-style pl-10"
+                                value={adminOrderSearch}
+                                onChange={(e) => setAdminOrderSearch(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left text-slate-500 dark:text-slate-400">
+                                <thead className="text-xs uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-300 rounded-xl">
+                                    <tr>
+                                        <th scope="col" className="p-3">ID</th>
+                                        <th scope="col" className="p-3">Покупатель</th>
+                                        <th scope="col" className="p-3">Дата</th>
+                                        <th scope="col" className="p-3">Сумма</th>
+                                        <th scope="col" className="p-3">Статус</th>
+                                        <th scope="col" className="p-3">Обработал</th>
+                                        <th scope="col" className="p-3">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredOrders.map((o) => {
+                                        const orderIdDisplay = o.numericId ? o.numericId.toString().slice(-4) : o.id.slice(-4);
+                                        const dateLabel = o.date?.toDate ? o.date.toDate().toISOString().split('T')[0] : 'N/A';
+                                        
+                                        return (
+                                        <tr key={o.id} className="border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                            <td className="px-3 py-4 font-bold text-slate-900 dark:text-slate-50">#{orderIdDisplay}</td>
+                                            <td className="px-3 py-4">{o.customerName || o.customer.name}</td>
+                                            <td className="px-3 py-4">{dateLabel}</td>
+                                            <td className="px-3 py-4 font-bold text-blue-500">{formatPrice(o.totalAmount)}</td>
+                                            <td className="px-3 py-4">
+                                                <span className={`text-xs px-3 py-1 rounded-full font-medium ${STATUS_MAP[o.status].color}`}>
+                                                    {STATUS_MAP[o.status].label}
+                                                </span>
+                                            </td>
+                                            <td className="px-3 py-4 text-xs">
+                                                {o.ownerResponse?.processedBy === ROLES.SUPPLIER ? 'Поставщик' : (o.ownerResponse?.processedBy === ROLES.STAFF ? 'Staff' : 'N/A')}
+                                            </td>
+                                            <td className="px-3 py-4">
+                                                <button onClick={() => openProcessOrder(o)} className="p-2 text-slate-500 hover:text-blue-600 transition" title="Обработать"><Icons.Edit size={18} /></button>
+                                            </td>
+                                        </tr>
+                                    );})}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Analytics Tab (Supplier Only) */}
+                {adminTab === "analytics" && isSupplier && (
+                    <div className="card-bg rounded-3xl p-6 shadow-md">
+                        <h2 className="text-2xl font-bold mb-4">Аналитика</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                            <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-xl shadow-inner border border-blue-200 dark:border-blue-700">
+                                <p className="text-sm text-blue-700 dark:text-blue-400 font-medium">Общий Доход (Продажи)</p>
+                                <p className="text-3xl font-extrabold text-blue-800 dark:text-blue-200 mt-1">{formatPrice(financialStats.revenue)}</p>
+                            </div>
+                            <div className="bg-emerald-50 dark:bg-emerald-950 p-4 rounded-xl shadow-inner border border-emerald-200 dark:border-emerald-700">
+                                <p className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">Общая Маржа (Прибыль)</p>
+                                <p className="text-3xl font-extrabold text-emerald-800 dark:text-emerald-200 mt-1">{formatPrice(financialStats.totalMargin)}</p>
+                            </div>
+                            <div className="bg-slate-50 dark:bg-slate-700 p-4 rounded-xl shadow-inner border border-slate-200 dark:border-slate-600">
+                                <p className="text-sm text-slate-700 dark:text-slate-300 font-medium">Кол-во Заказов</p>
+                                <p className="text-3xl font-extrabold dark:text-slate-50 mt-1">{financialStats.totalOrdersCount}</p>
+                            </div>
+                            <div className="bg-slate-50 dark:bg-slate-700 p-4 rounded-xl shadow-inner border border-slate-200 dark:border-slate-600">
+                                <p className="text-sm text-slate-700 dark:text-slate-300 font-medium">Всего Продано (шт.)</p>
+                                <p className="text-3xl font-extrabold dark:text-slate-50 mt-1">{financialStats.totalSales}</p>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={handleSupplierExport}
+                            className="bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-emerald-600 transition flex items-center gap-2 shadow-lg shadow-emerald-200 dark:shadow-emerald-900/50"
+                        >
+                            <Icons.Calculator size={18} /> Экспорт Аналитики в Excel
+                        </button>
+                    </div>
+                )}
+              </main>
+
+              {/* Product Modal */}
+              <Modal
+                isOpen={isProductModalOpen}
+                onClose={() => setIsProductModalOpen(false)}
+                title={editingProduct ? "Редактировать товар" : "Новый товар"}
+              >
+                <div className="space-y-3">
+                  <input placeholder="Название товара" className="input-style" value={productForm.name || ''} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} />
+                  <textarea placeholder="Описание" className="input-style resize-none h-20" value={productForm.description || ''} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })} />
+                  <select className="input-style" value={productForm.category || categories[1]} onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}>
+                    {categories.filter(c => c !== "Все").map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400">Цена Продажи (Покупателю)</label>
+                      <input type="number" className="input-style" value={productForm.sellPrice || ''} onChange={(e) => setProductForm({ ...productForm, sellPrice: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-red-500 font-bold">Себестоимость (Скрыто)</label>
+                      <input type="number" className="input-style border-red-500/50" value={productForm.costPrice || ''} onChange={(e) => setProductForm({ ...productForm, costPrice: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-blue-500 font-bold">Остаток на складе</label>
+                      <input type="number" className="input-style border-blue-500/50" value={productForm.stock || 0} onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })} />
+                    </div>
+                  </div>
+                  <input placeholder="URL картинки" className="input-style" value={productForm.imageUrl || ''} onChange={(e) => setProductForm({ ...productForm, imageUrl: e.target.value })} />
+                  <button onClick={saveProduct} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold mt-2 hover:bg-blue-700">
+                    Сохранить товар
+                  </button>
+                </div>
+              </Modal>
+
+              {/* Order Process Modal */}
+              <Modal
+                isOpen={!!processingOrder}
+                onClose={() => setProcessingOrder(null)}
+                title={`Обработка заказа #${processingOrder?.numericId.toString().slice(-4) || processingOrder?.id.slice(-4)}`}
+                maxWidth="max-w-3xl"
+              >
+                {processingOrder && (
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                            <div className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-sm text-slate-700 dark:text-slate-200">
+                                <h4 className="font-bold mb-2">Данные Клиента</h4>
+                                <p>Имя: <input type="text" className="input-style p-1" value={adminOrderForm.name} onChange={e => setAdminOrderForm({...adminOrderForm, name: e.target.value})} /></p>
+                                <p>Телефон: <input type="text" className="input-style p-1" value={adminOrderForm.phone} onChange={e => setAdminOrderForm({...adminOrderForm, phone: e.target.value})} /></p>
+                                <p>Адрес: <input type="text" className="input-style p-1" value={adminOrderForm.address} onChange={e => setAdminOrderForm({...adminOrderForm, address: e.target.value})} /></p>
+                                <p className="mt-2 font-semibold">Комментарий клиента:</p>
+                                <p className="text-xs card-bg p-2 rounded-lg">{processingOrder.customer.comment || 'Нет'}</p>
+                            </div>
+                            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm text-slate-600 dark:text-slate-300">
+                                <h4 className="font-bold mb-2">Состав Заказа</h4>
+                                {processingOrder.items.map(item => (
+                                    <p key={item.id} className="flex justify-between border-b border-dashed border-slate-200 dark:border-slate-700 py-1">
+                                        <span>{item.name} x{item.quantity}</span>
+                                        <span className="font-semibold text-slate-800 dark:text-slate-50">{formatPrice(item.sellPrice * item.quantity)}</span>
+                                    </p>
+                                ))}
+                                <p className="flex justify-between pt-2 font-extrabold text-lg text-slate-800 dark:text-slate-50">
+                                    <span>Итого:</span>
+                                    <span>{formatPrice(processingOrder.totalAmount)}</span>
+                                </p>
+                            </div>
+                            <div>
+                                <label className="text-sm font-bold text-slate-700 dark:text-slate-200 block mb-1">Комментарий Поставщика/Staff</label>
+                                <textarea
+                                    className="input-style resize-none h-20"
+                                    rows="3"
+                                    value={adminOrderForm.comment}
+                                    onChange={(e) => setAdminOrderForm({ ...adminOrderForm, comment: e.target.value })}
+                                    placeholder="Например: Отправлен через DPD, накладная #12345"
+                                ></textarea>
+                            </div>
+                            <div className="grid grid-cols-3 gap-3 pt-2">
+                                <button onClick={() => saveOrderResolution("rejected")} className="py-3 rounded-xl text-red-600 bg-red-50 dark:bg-red-900 dark:text-red-300 font-bold hover:bg-red-100 dark:hover:bg-red-800">
+                                    Отменить
+                                </button>
+                                <button onClick={() => saveOrderResolution("accepted")} className="py-3 rounded-xl text-amber-700 bg-amber-50 dark:bg-amber-900 dark:text-amber-300 font-bold hover:bg-amber-100 dark:hover:bg-amber-800">
+                                    В Работе
+                                </button>
+                                <button onClick={() => saveOrderResolution("delivered")} className="py-3 rounded-xl text-white bg-emerald-500 font-bold hover:bg-emerald-600 shadow-lg shadow-emerald-200 dark:shadow-emerald-900/50">
+                                    Выполнен
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {/* Chat Panel */}
+                        {hasFirebase && (
+                            <ChatPanel 
+                                orderId={processingOrder.id} 
+                                authRole={authRole} 
+                                authUser={user}
+                                customerName={processingOrder.customerName || processingOrder.customer.name}
+                                sendChatMessage={sendChatMessage}
+                                getChatPath={getChatPath}
+                            />
+                        )}
+                    </div>
+                )}
+              </Modal>
+            </div>
+          );
+        }
+
+        // 3. Customer Front
+        if (view === ROLES.CUSTOMER) {
+          const availableProducts = products.filter(p => p.stock > 0);
+          const filteredProducts = availableProducts.filter(
+            (p) =>
+              (selectedCategory === "Все" || p.category === selectedCategory) &&
+              p.name.toLowerCase().includes(customerSearch.toLowerCase())
+          );
+          
+          const customerOrders = orders.filter(o => o.customerId === user?.uid && o.status !== 'rejected').map(o => ({...o, orderId: o.numericId ? o.numericId.toString().slice(-4) : o.id.slice(-4)}));
+          const isLoggedIn = authRole === ROLES.CUSTOMER;
+
+          return (
+            <div className="min-h-screen flex flex-col animate-fade-in">
+              <header className="sticky top-0 z-30 glass-panel px-4 py-3 shadow-sm border-b flex flex-col">
+                <div className="flex justify-between items-center mb-3">
+                  <button onClick={() => {logout(); setView("role_select");}} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition">
+                    <Icons.ArrowLeft />
+                  </button>
+                  <h1 className="font-extrabold text-xl bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-teal-500">
+                    Hikmatov Store
+                  </h1>
+                  <div className="flex items-center gap-2">
+                     <ThemeToggle />
+                     {!isLoggedIn ? (
+                        <button onClick={() => setIsCustomerAuthModalOpen(true)} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 p-2 rounded-lg bg-slate-100 dark:bg-slate-700">
+                            Вход
+                        </button>
+                     ) : (
+                         <button onClick={logout} className="text-sm font-bold text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-lg bg-slate-100 dark:bg-slate-700">
+                             Выход
+                         </button>
+                     )}
+                  </div>
+                </div>
+                
+                {isLoggedIn && (
+                   <div className="text-xs text-slate-600 dark:text-slate-400 mb-3 p-2 bg-emerald-100 dark:bg-emerald-900 rounded-lg text-center font-medium">
+                       Вы вошли как: **{customerForm.name || user.email}**
+                   </div>
+                )}
+
+                <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-xl mb-3">
+                  <button
+                    onClick={() => setCustomerTab("catalog")}
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition flex items-center justify-center gap-2 ${
+                      customerTab === "catalog" ? "card-bg shadow text-slate-800 dark:text-slate-50" : "text-slate-500 dark:text-slate-400"
+                    }`}
+                  >
+                    <Icons.ShoppingCart size={18} /> Каталог
+                  </button>
+                  <button
+                    onClick={() => setCustomerTab("orders")}
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition flex items-center justify-center gap-2 ${
+                      customerTab === "orders" ? "card-bg shadow text-slate-800 dark:text-slate-50" : "text-slate-500 dark:text-slate-400"
+                    }`}
+                    disabled={!isLoggedIn}
+                  >
+                    <Icons.Truck size={18} /> Мои Заказы ({isLoggedIn ? customerOrders.length : 0})
+                  </button>
+                </div>
+                
+                {customerTab === "catalog" && (
+                  <>
+                    <div className="relative mb-3">
+                      <Icons.Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                      <input
+                        type="text"
+                        className="input-style pl-9 pr-4 py-2"
+                        placeholder="Найти товар..."
+                        value={customerSearch}
+                        onChange={(e) => setCustomerSearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                      {categories.map((cat) => (
+                        <button
+                          key={cat}
+                          onClick={() => setSelectedCategory(cat)}
+                          className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap font-medium transition-all ${
+                            selectedCategory === cat
+                              ? "bg-emerald-600 text-white shadow-md dark:bg-emerald-700"
+                              : "card-bg border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </header>
+
+              <main className="flex-1 p-4 pb-32 overflow-y-auto">
+                {/* Catalog View */}
+                {customerTab === "catalog" && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {filteredProducts.map((product) => {
+                      const inCart = cart.find((c) => c.id === product.id);
+
+                      return (
+                        <div key={product.id} className="card-bg p-3 rounded-2xl shadow-md flex flex-col h-full animate-scale-up hover:shadow-lg transition">
+                          <div className="h-28 mb-3 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-700">
+                            <img src={product.imageUrl} className="w-full h-full object-cover" onError={(e) => e.target.src = 'https://placehold.co/150x150/e2e8f0/000000?text=Image'} />
+                          </div>
+                          <h3 className="font-bold text-slate-800 dark:text-slate-50 text-sm leading-tight">{product.name}</h3>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 mb-2">{product.description}</p>
+                          <div className="mt-auto pt-2 flex items-center justify-between border-t border-slate-200 dark:border-slate-700/50">
+                            <span className="font-extrabold text-lg text-blue-600">
+                              {formatPrice(product.sellPrice)}
+                            </span>
+
+                            {inCart ? (
+                                <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+                                    <button onClick={() => updateCartItem(product.id, 'quantity', inCart.quantity - 1)} className="p-1 card-bg rounded shadow-sm hover:bg-red-50 text-red-600">
+                                        <Icons.Minus size={12} />
+                                    </button>
+                                    <span className="text-xs font-bold w-3 text-center">{inCart.quantity}</span>
+                                    <button onClick={() => updateCartItem(product.id, 'quantity', inCart.quantity + 1)} className="p-1 card-bg rounded shadow-sm hover:bg-emerald-50 text-emerald-600">
+                                        <Icons.Plus size={12} />
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => addToCart(product)}
+                                    className={`text-white p-2 rounded-lg transition shadow-md ${isLoggedIn ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-200 dark:shadow-emerald-900/50' : 'bg-slate-400 cursor-pointer'}`}
+                                >
+                                    <Icons.Plus size={16} />
+                                </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                
+                {/* Orders View */}
+                {customerTab === "orders" && isLoggedIn && (
+                    <div className="space-y-4">
+                        {customerOrders.length === 0 && (
+                            <div className="text-center text-slate-400 mt-10 p-4 card-bg rounded-xl shadow-md">
+                                <p>У вас пока нет активных заказов.</p>
+                            </div>
+                        )}
+                        {customerOrders.map((order) => {
+                            const dateLabel = order.date?.toDate ? order.date.toDate().toISOString().split('T')[0] : 'N/A';
+                            
+                            return (
+                            <div key={order.id} className="card-bg p-4 rounded-2xl shadow-md">
+                                <div className="flex justify-between items-start mb-3 border-b border-slate-200 dark:border-slate-700 pb-3">
+                                    <div className="flex flex-col">
+                                        <span className="font-bold text-lg text-slate-800 dark:text-slate-50">Заказ #{order.orderId}</span>
+                                        <p className="text-xs text-slate-400">от {dateLabel}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className={`text-sm font-bold px-3 py-1 rounded-full ${STATUS_MAP[order.status].color}`}>
+                                            {STATUS_MAP[order.status].label}
+                                        </span>
+                                        <p className="font-extrabold text-2xl text-blue-600 mt-1">{formatPrice(order.totalAmount)}</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    {order.items.map((i) => (
+                                        <div key={i.id} className="flex justify-between items-center text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-700 p-2 rounded-lg">
+                                            <span>{i.name} x{i.quantity}</span>
+                                            <span className="font-semibold text-slate-800 dark:text-slate-50">{formatPrice(i.sellPrice * i.quantity)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                {hasFirebase && (
+                                    <ChatPanel 
+                                        orderId={order.id} 
+                                        authRole={authRole} 
+                                        authUser={user}
+                                        customerName={order.customerName || order.customer.name}
+                                        sendChatMessage={sendChatMessage}
+                                        getChatPath={getChatPath}
+                                    />
+                                )}
+
+                            </div>
+                        );})}
+                    </div>
+                )}
+              </main>
+
+              {/* Floating Cart/Checkout Button */}
+              {cart.length > 0 && customerTab === "catalog" && (
+                <div className="fixed bottom-0 left-0 right-0 glass-panel border-t border-slate-200 dark:border-slate-700 p-4 pb-6 shadow-2xl z-40 animate-slide-in">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-2xl font-extrabold text-slate-800 dark:text-slate-50">
+                      Итого: {formatPrice(cartTotals.customerTotal)}
+                    </p>
+                    <span className="text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-full font-bold">
+                      {cart.reduce((sum, i) => sum + i.quantity, 0)} шт.
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setIsOrderModalOpen(true)}
+                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-blue-200 dark:shadow-blue-900/50 flex justify-center items-center gap-2 hover:from-blue-700 hover:to-indigo-700 transition"
+                  >
+                    Перейти к оформлению
+                  </button>
+                </div>
+              )}
+
+              {/* Order/Margin Modal */}
+              <Modal
+                isOpen={isOrderModalOpen}
+                onClose={() => setIsOrderModalOpen(false)}
+                title="Оформление и Расчет Маржи"
+                maxWidth="max-w-2xl"
+              >
+                <div className="grid md:grid-cols-2 gap-6">
+                    {/* Left: Cart and Margin Calculation (The core feature B3/B4) */}
+                    <div className="space-y-4 md:order-1">
+                        <h4 className="text-xl font-bold text-slate-700 dark:text-slate-200 mb-2 border-b border-slate-200 dark:border-slate-700 pb-2 flex items-center gap-2">
+                           <Icons.Calculator size={24} className="text-emerald-500" /> Функция "Для Продажи"
+                        </h4>
+                        
+                        {cart.map((item) => {
+                            const unitMargin = item.resalePrice ? item.resalePrice - item.sellPrice : 0;
+                            const totalMargin = unitMargin * item.quantity;
+                            
+                            return (
+                                <div key={item.id} className="card-bg p-3 rounded-xl shadow-sm">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <p className="font-bold text-sm">{item.name} x{item.quantity}</p>
+                                        <button onClick={() => removeFromCart(item.id)} className="p-1 text-red-500 hover:bg-red-50 rounded-full"><Icons.Trash size={16} /></button>
+                                    </div>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Цена Поставщика (за ед.): {formatPrice(item.sellPrice)}</p>
+                                    
+                                    <label className="text-xs text-slate-700 dark:text-slate-200 font-semibold block mb-1">Ваша Желаемая Цена (для перепродажи)</label>
+                                    <input
+                                        type="number"
+                                        className="input-style p-2 bg-emerald-50 dark:bg-emerald-950 border-emerald-300 dark:border-emerald-700 font-bold"
+                                        value={item.resalePrice || ''}
+                                        onChange={(e) => updateCartItem(item.id, 'resalePrice', e.target.value)}
+                                        min={item.sellPrice + 10}
+                                    />
+
+                                    <div className="mt-2 text-xs p-2 bg-emerald-100 dark:bg-emerald-900 rounded-lg">
+                                        <p className="flex justify-between font-semibold text-emerald-800 dark:text-emerald-300">
+                                            <span>Ваша Маржа (за ед.):</span>
+                                            <span>{formatPrice(unitMargin)}</span>
+                                        </p>
+                                        <p className="flex justify-between font-bold text-emerald-800 dark:text-emerald-300 pt-1 border-t border-emerald-300 dark:border-emerald-700 mt-1">
+                                            <span>Общая Прибыль (с товара):</span>
+                                            <span>{formatPrice(totalMargin)}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        <div className="bg-emerald-600 text-white p-4 rounded-xl shadow-lg mt-4 dark:bg-emerald-700">
+                            <p className="text-sm font-semibold">Итого Ваша Общая Прибыль:</p>
+                            <p className="text-3xl font-extrabold">{formatPrice(cartTotals.resellerMarginTotal)}</p>
+                        </div>
+                        
+                        <button onClick={handleBuyerMarginExport} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold text-sm hover:bg-slate-700 transition flex items-center justify-center gap-2">
+                            <Icons.Calculator size={16} /> Скачать Excel Отчет по Марже
+                        </button>
+                    </div>
+
+                    {/* Right: Customer Info and Checkout */}
+                    <div className="space-y-3 md:order-2">
+                        <h4 className="text-xl font-bold text-slate-700 dark:text-slate-200 mb-2 border-b border-slate-200 dark:border-slate-700 pb-2">Данные для Заказа</h4>
+                        
+                        <div className="card-bg p-3 rounded-xl shadow-sm">
+                            <p className="flex justify-between items-center text-lg font-bold text-slate-800 dark:text-slate-50">
+                                <span>Сумма к оплате:</span>
+                                <span className="text-blue-600 text-2xl font-extrabold">{formatPrice(cartTotals.customerTotal)}</span>
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 text-right mt-1">
+                                *Эта сумма оплачивается поставщику.
+                            </p>
+                        </div>
+
+                        <input type="text" placeholder="Ваше Имя" className="input-style" value={customerForm.name} onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })} disabled={isLoggedIn} />
+                        <input type="tel" placeholder="Ваш Номер" className="input-style" value={customerForm.phone} onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })} />
+                        <textarea placeholder="Адрес доставки" className="input-style resize-none h-20" value={customerForm.address} onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })} />
+                        <textarea placeholder="Комментарий к заказу (необязательно)" className="input-style resize-none h-16" value={customerForm.comment} onChange={(e) => setCustomerForm({ ...customerForm, comment: e.target.value })} />
+                        
+                        <button onClick={confirmOrder} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-200 dark:shadow-blue-900/50 mt-2 hover:bg-blue-700 transition">
+                            <Icons.Check className="inline" /> Оформить Заказ
+                        </button>
+                    </div>
+                </div>
+              </Modal>
+              
+              {/* Customer Auth Modal (can be opened manually) */}
+              <AuthModal 
+                  isOpen={isCustomerAuthModalOpen} 
+                  onClose={() => setIsCustomerAuthModalOpen(false)} 
+                  customerLogin={customerLogin} 
+                  customerRegister={customerRegister} 
+                  logout={logout}
+                  error={authError}
+                  authRole={authRole}
+              />
+              
+              {isNotificationOpen && <Notification message={notificationMessage} onClose={() => setIsNotificationOpen(false)} />}
+            </div>
+          );
+        }
+
+        return null;
+      }
+
+      window.onload = function() {
+          const root = ReactDOM.createRoot(document.getElementById("root"));
+          root.render(<HikmatovApp />);
+      }
+    </script>
+  </body>
+</html>
