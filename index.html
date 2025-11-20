@@ -110,6 +110,10 @@
         ChevronRight: (p) => (<Icon {...p}><polyline points="9 18 15 12 9 6"></polyline></Icon>),
         Info: (p) => (<Icon {...p}><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></Icon>),
         LogOut: (p) => (<Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></Icon>),
+        Eye: (p) => (<Icon {...p}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></Icon>),
+        EyeOff: (p) => (<Icon {...p}><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" /></Icon>),
+        Trash: (p) => (<Icon {...p}><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></Icon>),
+        RotateCcw: (p) => (<Icon {...p}><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></Icon>),
       };
 
       const STATUS_MAP = {
@@ -123,6 +127,15 @@
         kaspi: { label: "Kaspi QR", icon: Icons.CreditCard, color: "text-red-500" },
         cash: { label: "Наличные", icon: Icons.Banknote, color: "text-green-600" },
         card: { label: "Карта", icon: Icons.CreditCard, color: "text-blue-600" },
+      };
+
+      // Safe date helper
+      const normalizeDate = (d) => {
+        if (!d) return 0;
+        if (typeof d === 'number') return d; // already millis
+        if (d.seconds) return d.seconds * 1000; // Firestore Timestamp
+        if (d instanceof Date) return d.getTime(); // JS Date
+        return 0;
       };
 
       // --- COMPONENTS ---
@@ -152,6 +165,7 @@
         const [products, setProducts] = useState([]);
         const [orders, setOrders] = useState([]);
         const [expenses, setExpenses] = useState([]);
+        const [lastProfitReset, setLastProfitReset] = useState(0);
         const [isLoading, setIsLoading] = useState(true);
 
         // Auth State
@@ -184,10 +198,13 @@
         const [adminOrderForm, setAdminOrderForm] = useState({ deliveryDate: "", comment: "" });
 
         // --- FIREBASE INIT & SUBSCRIPTIONS ---
+        const APP_ID = "hikmat-fef0a"; // Using project ID for path namespacing
+        const getCollRef = (name) => window.fb.collection(window.db, "artifacts", APP_ID, "public", "data", name);
+        const getDocRef = (collName, docId) => window.fb.doc(window.db, "artifacts", APP_ID, "public", "data", collName, docId);
+
         useEffect(() => {
           // 1. AUTH INITIALIZATION
           const initAuth = async () => {
-            // Automatically sign in anonymously if no user to allow reading public data
             if (!window.auth.currentUser) {
               try {
                 await window.fb.signInAnonymously(window.auth);
@@ -206,62 +223,63 @@
 
         useEffect(() => {
           // 2. DATA FETCHING (GUARDED)
-          if (!currentUser) return; // CRITICAL: Do not query until auth is ready
-
-          const APP_ID = "hikmat-fef0a"; // Using project ID for path namespacing
-          const getCollectionRef = (collName) => window.fb.collection(window.db, "artifacts", APP_ID, "public", "data", collName);
+          if (!currentUser) return; 
 
           // Products Listener
-          const unsubProducts = window.fb.onSnapshot(getCollectionRef("products"), (snapshot) => {
+          const unsubProducts = window.fb.onSnapshot(getCollRef("products"), (snapshot) => {
             const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setProducts(items);
             setIsLoading(false);
           }, (error) => console.error("Products listener error:", error));
 
           // Orders Listener
-          const unsubOrders = window.fb.onSnapshot(getCollectionRef("orders"), (snapshot) => {
+          const unsubOrders = window.fb.onSnapshot(getCollRef("orders"), (snapshot) => {
             const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            // Sort by date desc
-            items.sort((a, b) => b.date - a.date);
+            items.sort((a, b) => normalizeDate(b.date) - normalizeDate(a.date));
             setOrders(items);
           }, (error) => console.error("Orders listener error:", error));
 
           // Expenses Listener
-          const unsubExpenses = window.fb.onSnapshot(getCollectionRef("expenses"), (snapshot) => {
+          const unsubExpenses = window.fb.onSnapshot(getCollRef("expenses"), (snapshot) => {
             const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setExpenses(items);
           }, (error) => console.error("Expenses listener error:", error));
+
+          // Settings Listener (for Profit Reset)
+          const settingsRef = window.fb.doc(window.db, "artifacts", APP_ID, "public", "data", "settings", "financials");
+          const unsubSettings = window.fb.onSnapshot(settingsRef, (doc) => {
+            if (doc.exists()) {
+              setLastProfitReset(normalizeDate(doc.data().lastReset));
+            } else {
+              setLastProfitReset(0);
+            }
+          }, (error) => console.error("Settings listener error (harmless if first run):", error));
 
           return () => {
             unsubProducts();
             unsubOrders();
             unsubExpenses();
+            unsubSettings();
           };
-        }, [currentUser]); // Re-run when user changes
+        }, [currentUser]); 
 
         // --- AUTH HANDLERS ---
         const handleAuth = async () => {
           setAuthError("");
           try {
             if (authMode === "admin") {
-              // MOCK ADMIN CHECK
               if (authForm.email === "Hikmatov" && authForm.password === "hikmat2856") {
-                // We don't need to re-sign in if we are already anon, 
-                // but just in case user logged out manually or logic changed:
                 if (!currentUser) await window.fb.signInAnonymously(window.auth);
-                
                 setView("admin");
                 setIsAuthModalOpen(false);
               } else {
                 setAuthError("Неверный логин или пароль администратора");
               }
             } else if (authMode === "login") {
-              // Seller Login
               await window.fb.signInWithEmailAndPassword(window.auth, authForm.email, authForm.password);
               setView("seller");
               setIsAuthModalOpen(false);
             } else if (authMode === "register") {
-              // Seller Register
               await window.fb.createUserWithEmailAndPassword(window.auth, authForm.email, authForm.password);
               setView("seller");
               setIsAuthModalOpen(false);
@@ -276,7 +294,6 @@
           await window.fb.signOut(window.auth);
           setView("landing");
           setCart([]);
-          // Optionally re-sign in anonymously for public view logic if needed later
           window.fb.signInAnonymously(window.auth).catch(console.error);
         };
 
@@ -324,13 +341,8 @@
           );
         };
 
-        // --- FIRESTORE ACTIONS ---
-        // Helper to get doc refs with correct path
-        const APP_ID = "hikmat-fef0a";
-        const getCollRef = (name) => window.fb.collection(window.db, "artifacts", APP_ID, "public", "data", name);
-        const getDocRef = (collName, docId) => window.fb.doc(window.db, "artifacts", APP_ID, "public", "data", collName, docId);
+        // --- FUNCTIONS ---
 
-        // --- NEW FUNCTION (FIXED MISSING FUNCTION) ---
         const openProductModal = (product = null) => {
           setEditingProduct(product);
           setProductForm(
@@ -348,11 +360,46 @@
           setIsProductModalOpen(true);
         };
 
+        const toggleProductVisibility = async (e, product) => {
+          e.stopPropagation();
+          try {
+            const productRef = getDocRef("products", product.id);
+            await window.fb.updateDoc(productRef, { isHidden: !product.isHidden });
+          } catch (e) {
+            alert("Ошибка: " + e.message);
+          }
+        };
+
+        const deleteProduct = async (e, product) => {
+          e.stopPropagation();
+          if(window.confirm(`Вы точно хотите удалить товар "${product.name}"?\n\nЭто действие нельзя отменить.`)) {
+            try {
+              const productRef = getDocRef("products", product.id);
+              await window.fb.deleteDoc(productRef);
+            } catch (e) {
+              alert("Ошибка удаления: " + e.message);
+            }
+          }
+        };
+
+        const resetProfit = async (e) => {
+          e.preventDefault();
+          if (window.confirm("Вы уверены, что хотите сбросить счетчик прибыли?\n\nТекущая прибыль станет 0. История заказов сохранится, но не будет учитываться в текущей статистике.")) {
+            try {
+              // Ensure we use the same path pattern
+              const settingsRef = window.fb.doc(window.db, "artifacts", APP_ID, "public", "data", "settings", "financials");
+              await window.fb.setDoc(settingsRef, { lastReset: Date.now() }, { merge: true });
+              alert("Прибыль успешно сброшена!");
+            } catch (e) {
+              alert("Ошибка сброса: " + e.message);
+            }
+          }
+        };
+
         const confirmOrder = async () => {
           if (!cart.length || !customerForm.name) return;
           
           try {
-            // 1. Update Stock
             cart.forEach(async (cartItem) => {
               const productRef = getDocRef("products", cartItem.id);
               const currentProduct = products.find(p => p.id === cartItem.id);
@@ -363,11 +410,10 @@
               }
             });
 
-            // 2. Create Order
             const newOrder = {
               items: cart,
               totalAmount: cart.reduce((sum, i) => sum + i.sellPrice * i.quantity, 0),
-              date: Date.now(), // Timestamp
+              date: Date.now(), 
               status: "pending",
               paymentMethod: customerForm.paymentMethod,
               customer: { ...customerForm },
@@ -385,11 +431,9 @@
             setSellerTab("orders");
           } catch (e) {
             alert("Ошибка при создании заказа: " + e.message);
-            console.error(e);
           }
         };
 
-        // Admin Logic
         const openProcessOrder = (order) => {
           setProcessingOrder(order);
           setAdminOrderForm({
@@ -459,14 +503,14 @@
 
         // Stats
         const financialStats = useMemo(() => {
-          const now = new Date();
-          const currentMonth = now.getMonth();
+          const resetTime = normalizeDate(lastProfitReset);
           
-          const deliveredOrders = orders.filter(
-            (o) => {
-              const oDate = new Date(o.date);
-              return o.status === "delivered" && oDate.getMonth() === currentMonth;
-            }
+          // Filter items based on Last Reset Date (normalized)
+          const relevantOrders = orders.filter(o => normalizeDate(o.date) > resetTime);
+          const relevantExpenses = expenses.filter(e => normalizeDate(e.date) > resetTime);
+
+          const deliveredOrders = relevantOrders.filter(
+            (o) => o.status === "delivered"
           );
           
           const revenue = deliveredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
@@ -484,17 +528,17 @@
             0
           );
           
-          const monthExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+          const periodExpenses = relevantExpenses.reduce((sum, e) => sum + e.amount, 0);
           
           return {
             revenue,
             revenueKaspi,
             revenueCash,
             cogs,
-            expenses: monthExpenses,
-            netProfit: revenue - cogs - monthExpenses,
+            expenses: periodExpenses,
+            netProfit: revenue - cogs - periodExpenses,
           };
-        }, [orders, expenses]);
+        }, [orders, expenses, lastProfitReset]);
 
         // --- VIEWS ---
         if (view === "landing") {
@@ -631,7 +675,7 @@
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                   <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 col-span-2">
-                    <p className="text-xs text-slate-400 mb-1">Выручка (Тек. месяц)</p>
+                    <p className="text-xs text-slate-400 mb-1">Выручка (С момента сброса)</p>
                     <p className="text-3xl font-bold text-slate-800">{financialStats.revenue.toLocaleString()} ₸</p>
                     <div className="flex gap-4 mt-3 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg">
                       <span className="flex items-center gap-1"><Icons.CreditCard size={12} className="text-red-500" /> Kaspi: {financialStats.revenueKaspi.toLocaleString()}</span>
@@ -642,9 +686,21 @@
                     <p className="text-xs text-slate-400 mb-1">Расходы</p>
                     <p className="text-2xl font-bold text-red-500">-{financialStats.expenses.toLocaleString()} ₸</p>
                   </div>
-                  <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-5 rounded-2xl shadow-lg text-white col-span-2">
-                    <p className="text-xs text-emerald-100 mb-1">Чистая Прибыль</p>
-                    <p className="text-4xl font-bold">{financialStats.netProfit.toLocaleString()} ₸</p>
+                  <div className="relative bg-gradient-to-br from-emerald-500 to-teal-600 p-5 rounded-2xl shadow-lg text-white col-span-2 overflow-hidden group">
+                    <div className="flex justify-between items-start relative z-10">
+                      <div>
+                         <p className="text-xs text-emerald-100 mb-1">Чистая Прибыль</p>
+                         <p className="text-4xl font-bold">{financialStats.netProfit.toLocaleString()} ₸</p>
+                      </div>
+                      <button 
+                        onClick={resetProfit}
+                        className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition backdrop-blur-sm text-white" 
+                        title="Сбросить прибыль"
+                      >
+                        <Icons.RotateCcw size={20} />
+                      </button>
+                    </div>
+                    <div className="absolute -right-10 -bottom-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
                   </div>
                 </div>
 
@@ -768,15 +824,32 @@
                 <h2 className="text-lg font-bold text-slate-800 mt-8 mb-4">Склад и Цены</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {products.map((product) => (
-                    <div key={product.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex gap-3 group">
+                    <div key={product.id} className={`bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex gap-3 group relative ${product.isHidden ? "opacity-60 bg-slate-50 border-dashed" : ""}`}>
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <button 
+                          onClick={(e) => toggleProductVisibility(e, product)} 
+                          className="p-1.5 bg-white/80 hover:bg-white rounded-lg shadow-sm text-slate-500 hover:text-blue-600 transition"
+                          title={product.isHidden ? "Показать товар" : "Скрыть товар"}
+                        >
+                          {product.isHidden ? <Icons.EyeOff size={14} /> : <Icons.Eye size={14} />}
+                        </button>
+                         <button 
+                          onClick={(e) => deleteProduct(e, product)} 
+                          className="p-1.5 bg-white/80 hover:bg-red-50 rounded-lg shadow-sm text-slate-400 hover:text-red-600 transition"
+                          title="Удалить товар"
+                        >
+                          <Icons.Trash size={14} />
+                        </button>
+                      </div>
                       <img src={product.imageUrl} className="w-20 h-20 rounded-xl object-cover bg-slate-100" alt="" />
                       <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start">
-                          <h3 className="font-bold text-sm truncate">{product.name}</h3>
-                          <button onClick={() => openProductModal(product)} className="p-1 text-slate-300 hover:text-blue-600 transition">
-                            <Icons.Edit size={16} />
-                          </button>
+                        <div className="flex justify-between items-start pr-14">
+                          <h3 className="font-bold text-sm truncate">{product.name} {product.isHidden && <span className="text-[10px] text-slate-400 font-normal">(Скрыт)</span>}</h3>
+                          
                         </div>
+                        <button onClick={() => openProductModal(product)} className="text-xs text-blue-600 hover:underline mt-0.5 flex items-center gap-1">
+                            <Icons.Edit size={12} /> Ред.
+                          </button>
                         <div className="mt-2 space-y-1 text-xs">
                           <div className="flex justify-between">
                             <span className="text-slate-400">Склад:</span>
