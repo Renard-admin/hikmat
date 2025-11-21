@@ -948,6 +948,10 @@
               (selectedCategory === "Все" || p.category === selectedCategory) &&
               p.name.toLowerCase().includes(sellerSearch.toLowerCase())
           );
+
+          // Filter orders to show only those created by the current seller
+          const myOrders = orders.filter(o => o.sellerEmail === currentUser?.email);
+
           return (
             <div className="min-h-screen bg-slate-50 flex flex-col animate-fade-in">
               <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md px-4 py-3 shadow-sm border-b border-slate-100">
@@ -1013,8 +1017,8 @@
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {orders.length === 0 && <div className="text-center text-slate-400 mt-10">История заказов пуста</div>}
-                    {orders.map((order) => (
+                    {myOrders.length === 0 && <div className="text-center text-slate-400 mt-10">История заказов пуста</div>}
+                    {myOrders.map((order) => (
                       <div key={order.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex gap-2">
